@@ -1,0 +1,130 @@
+# Demo A Agent Postprocess (P2)
+#
+# Safety contract (full text in p2_workflow_contract.json):
+# - Reacts ONLY to completed runs of "Demo A Controlled CI" on Xiu11111/rustsbi.
+# - Every event value (head_sha, run id, attempt, conclusion, repository) is a
+#   CLAIM: it is only passed as an env var and re-checked against the GitHub
+#   API inside postprocess.py before any use.
+# - NOTHING from the source run is checked out, executed, or restored:
+#   checkout pins github.sha (this workflow's own commit), not
+#   workflow_run.head_sha; no source artifact is downloaded or run; no source
+#   cache is restored. CI log content is treated as untrusted data and is
+#   never interpolated into a shell command.
+# - Two-job isolation: "analyze" holds the model secret (DEMO_A_LLM_API_KEY)
+#   but has NO issues:write; "publish" holds issues:write but never receives
+#   the model secret, never calls the model, and only reads the analysis
+#   artifact of the same workflow run.
+# - The "secret name exists" check (MODEL_SECRET_NONEMPTY gate) and the
+#   "provider call works" result (model_secret_value_validity) are two
+#   separate gates; the secret value itself is never logged or recorded.
+# - All external actions are pinned to immutable commit SHAs (release noted
+#   in the trailing comment of each uses: line).
+# - The single concurrency group serializes postprocess runs, which also
+#   serializes publish operations on the same stable issue key.
+
+name: Demo A Agent Postprocess
+
+on:
+  workflow_run:
+    workflows: ["Demo A Controlled CI"]
+    types: [completed]
+
+concurrency:
+  group: demo-a-agent-postprocess
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  analyze:
+    name: Analyze controlled failure (gated)
+    # Secret-free guard: this if-expression deliberately uses only the
+    # github context. Secrets may not be referenced in if:, and the secret
+    # is only injected into the job env below.
+    if: >
+      github.repository == 'Xiu11111/rustsbi' &&
+      github.event.workflow_run.repository.full_name == 'Xiu11111/rustsbi' &&
+      github.event.workflow_run.name == 'Demo A Controlled CI'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DEMO_A_LLM_API_KEY: ${{ secrets.DEMO_A_LLM_API_KEY }}
+      # Claimed source-run values (verified against the API inside the script)
+      CLAIMED_SOURCE_REPOSITORY: ${{ github.event.workflow_run.repository.full_name }}
+      CLAIMED_SOURCE_WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+      CLAIMED_SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+      CLAIMED_SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+      CLAIMED_SOURCE_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      CLAIMED_SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+    steps:
+      - name: Check out postprocess ref (github.sha only, no credentials)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Run gated analysis (16 gates -> agent only if all PASS)
+        run: |
+          python .github/demo-a-agent/postprocess.py analyze \
+            --output output/postprocess \
+            --cache cache/demo_a_postprocess
+
+      - name: Upload analysis artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: demo-a-analysis
+          path: output/postprocess/analysis.json
+          if-no-files-found: error
+
+  publish:
+    name: Publish diagnosis issue (deduplicated)
+    needs: analyze
+    if: needs.analyze.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # NOTE: no model secret here. This job never calls the model and never
+      # imports the frozen agent bundle; it only reads the analysis artifact.
+    steps:
+      - name: Check out postprocess ref (github.sha only, no credentials)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download analysis artifact (same workflow run)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: demo-a-analysis
+          path: output/postprocess
+
+      - name: Publish or reuse diagnosis issue (stable-marker dedup)
+        run: |
+          python .github/demo-a-agent/postprocess.py publish \
+            --analysis output/postprocess/analysis.json \
+            --output output/postprocess
+
+      - name: Upload publication artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: demo-a-publication
+          path: output/postprocess/publication.json
+          if-no-files-found: error

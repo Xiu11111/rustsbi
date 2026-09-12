@@ -1,0 +1,83 @@
+{
+    "schema":  "demo_a_agent_bundle_manifest/1",
+    "generated_at":  "2026-09-12T14:13:42Z",
+    "topology":  "PINNED_AGENT_BUNDLE",
+    "bundle_dir":  ".github/demo-a-agent/",
+    "source_frozen_by":  "E:/ospp/demo_a_foundation/output/demo_a_workflow_integration/p0_freeze.json (non-git source tree, sha256-frozen)",
+    "python_min_version":  "3.10",
+    "excluded":  [
+                     ".env",
+                     ".env.example",
+                     "config.json",
+                     "cache/",
+                     "output/",
+                     "cases/",
+                     "evidence/",
+                     "checks/",
+                     "__pycache__/",
+                     "README.md and harness reports",
+                     "historical logs",
+                     "credentials"
+                 ],
+    "exclusion_notes":  [
+                            "config.json intentionally excluded: load_structural_config returns {} when it is missing and config.py DEFAULTS carry the frozen runtime parameters (model deepseek-ai/DeepSeek-V4-Flash, base_url https://api.siliconflow.cn/v1, max_steps 8, max_request_chars 30000, max_output_tokens 4096, timeout 120s)",
+                            "9 modules are byte-for-byte copies of the sha256-frozen foundation modules; sha256 values below are computed from working-tree bytes at bundling time",
+                            "agent is NOT reimplemented: the postprocess workflow (P2) imports run_agent from these bundled modules"
+                        ],
+    "files":  [
+                  {
+                      "relative_path":  "agent.py",
+                      "source_sha256":  "edb1edd93b9d82420af2e60c023543dd97e12e2b0874ef28d447777bab069215",
+                      "bundled_sha256":  "edb1edd93b9d82420af2e60c023543dd97e12e2b0874ef28d447777bab069215",
+                      "match":  true
+                  },
+                  {
+                      "relative_path":  "cli.py",
+                      "source_sha256":  "27e39dae81b34c97fa02dfd805a854669754460d37a031dc59bc9e42d6ba35fa",
+                      "bundled_sha256":  "27e39dae81b34c97fa02dfd805a854669754460d37a031dc59bc9e42d6ba35fa",
+                      "match":  true
+                  },
+                  {
+                      "relative_path":  "config.py",
+                      "source_sha256":  "5c17d6468339d827aaf4efa4f6a563db40c41cbb884a952305c1b2a9bb354081",
+                      "bundled_sha256":  "5c17d6468339d827aaf4efa4f6a563db40c41cbb884a952305c1b2a9bb354081",
+                      "match":  true
+                  },
+                  {
+                      "relative_path":  "context.py",
+                      "source_sha256":  "ab9d02027c92a53e7f7a0216d584808ca0b6cec43a722338625f8104af8efb73",
+                      "bundled_sha256":  "ab9d02027c92a53e7f7a0216d584808ca0b6cec43a722338625f8104af8efb73",
+                      "match":  true
+                  },
+                  {
+                      "relative_path":  "materials.py",
+                      "source_sha256":  "951cabe9c8df298ff0a930eac199ce06454919a3b942c47107b1d8e0f09230d0",
+                      "bundled_sha256":  "951cabe9c8df298ff0a930eac199ce06454919a3b942c47107b1d8e0f09230d0",
+                      "match":  true
+                  },
+                  {
+                      "relative_path":  "provider.py",
+                      "source_sha256":  "691033584819b014338639c932c81165fcfcbaf64dfe63a5132fede3042741cc",
+                      "bundled_sha256":  "691033584819b014338639c932c81165fcfcbaf64dfe63a5132fede3042741cc",
+                      "match":  true
+                  },
+                  {
+                      "relative_path":  "retrieval.py",
+                      "source_sha256":  "a032e9bfc01077b56904bebda5bf11b632776f24c8953dedc8ead45d0efa564b",
+                      "bundled_sha256":  "a032e9bfc01077b56904bebda5bf11b632776f24c8953dedc8ead45d0efa564b",
+                      "match":  true
+                  },
+                  {
+                      "relative_path":  "session.py",
+                      "source_sha256":  "7dca7276ee6e3d003883ca0ee8542fc1a804a078fc523b07a6d9a1b1906044d6",
+                      "bundled_sha256":  "7dca7276ee6e3d003883ca0ee8542fc1a804a078fc523b07a6d9a1b1906044d6",
+                      "match":  true
+                  },
+                  {
+                      "relative_path":  "sources.py",
+                      "source_sha256":  "680efde8f1c2d30b5833377cad5db968da0d52d3dd042bed836e99eb31a80f87",
+                      "bundled_sha256":  "680efde8f1c2d30b5833377cad5db968da0d52d3dd042bed836e99eb31a80f87",
+                      "match":  true
+                  }
+              ]
+}
