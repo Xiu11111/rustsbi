@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,17 @@ from typing import Any
 API_ROOT = "https://api.github.com"
 EXPECTED_JOB = "controlled-git-ref-check"
 EVIDENCE_DIR = Path("online_evidence")
+
+class StripCrossHostAuthorization(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if (
+            redirected is not None
+            and urllib.parse.urlparse(req.full_url).hostname
+            != urllib.parse.urlparse(newurl).hostname
+        ):
+            redirected.remove_header("Authorization")
+        return redirected
 
 def required_env(name: str) -> str:
     value = os.environ.get(name, "").strip()
@@ -31,7 +43,8 @@ def api_request(path: str, token: str) -> bytes:
             "X-GitHub-Api-Version": "2022-11-28",
         },
     )
-    with urllib.request.urlopen(request, timeout=60) as response:
+    opener = urllib.request.build_opener(StripCrossHostAuthorization())
+    with opener.open(request, timeout=60) as response:
         return response.read()
 
 def get_json(path: str, token: str) -> dict[str, Any]:
@@ -56,6 +69,7 @@ def false_gate() -> dict[str, Any]:
 def main() -> int:
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     gate = false_gate()
+    stage = "environment"
     try:
         token = required_env("GH_TOKEN")
         repository = required_env("SOURCE_REPOSITORY")
@@ -64,7 +78,9 @@ def main() -> int:
         event_head_sha = required_env("SOURCE_HEAD_SHA")
         event_workflow_name = required_env("SOURCE_WORKFLOW_NAME")
         event_conclusion = required_env("SOURCE_CONCLUSION")
+        stage = "run_metadata"
         run = get_json(f"/repos/{repository}/actions/runs/{run_id}", token)
+        stage = "jobs_metadata"
         jobs = get_json(
             f"/repos/{repository}/actions/runs/{run_id}/attempts/{run_attempt}/jobs?per_page=100",
             token,
@@ -86,6 +102,7 @@ def main() -> int:
         if not all(checks.values()):
             raise RuntimeError(f"identity mismatch: checks={checks}")
         job_id = int(job["id"])
+        stage = "job_log"
         raw_log = api_request(f"/repos/{repository}/actions/jobs/{job_id}/logs", token)
         if not raw_log:
             raise RuntimeError("downloaded job log is empty")
@@ -110,6 +127,7 @@ def main() -> int:
         write_json(EVIDENCE_DIR / "collector_error.json", {
             "error_type": type(error).__name__,
             "message": str(error),
+            "stage": stage,
             "identity_verified": False,
         })
         print(f"collector failed closed: {type(error).__name__}: {error}", file=sys.stderr)
