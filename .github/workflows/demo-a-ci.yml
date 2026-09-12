@@ -1,0 +1,58 @@
+name: Demo A Controlled CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Demo scenario
+        required: true
+        default: git-ref-failure
+        type: choice
+        options:
+          - git-ref-failure
+          - success
+
+permissions:
+  contents: read
+
+jobs:
+  controlled-git-ref-check:
+    name: controlled-git-ref-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run controlled Git reference check
+        shell: bash
+        env:
+          SCENARIO: ${{ inputs.scenario }}
+        run: |
+          set -uo pipefail
+          case_id="demo-a-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          target_ref="HEAD"
+          expected_failure="false"
+          if [[ "$SCENARIO" == "git-ref-failure" ]]; then
+            target_ref="refs/heads/demo-a-missing-ref"
+            expected_failure="true"
+          fi
+          echo "DEMO_A_CASE_ID=$case_id"
+          echo "DEMO_A_SCENARIO=$SCENARIO"
+          echo "DEMO_A_EXPECTED_FAILURE=$expected_failure"
+          echo "DEMO_A_TARGET_REF=$target_ref"
+          echo "DEMO_A_HEAD_SHA=$(git rev-parse HEAD)"
+          set +e
+          git rev-parse "$target_ref"
+          status=$?
+          set -e
+          echo "DEMO_A_GIT_EXIT_CODE=$status"
+          if [[ "$SCENARIO" == "git-ref-failure" ]]; then
+            if [[ "$status" -eq 0 ]]; then
+              echo "CONTROLLED_FAILURE_NOT_TRIGGERED"
+              exit 1
+            fi
+            exit "$status"
+          fi
+          if [[ "$SCENARIO" == "success" ]]; then
+            exit "$status"
+          fi
+          echo "Unsupported scenario: $SCENARIO"
+          exit 2

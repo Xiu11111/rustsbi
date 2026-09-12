@@ -1,0 +1,40 @@
+name: Demo A Log Collector
+
+on:
+  workflow_run:
+    workflows: ["Demo A Controlled CI"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  collect-controlled-failure:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect and verify source job log
+        id: collect
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          SOURCE_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: python3 .github/scripts/demo_a_collect_log.py
+      - name: Upload evidence, including classified failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-a-online-evidence-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          path: online_evidence/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Enforce collector result
+        if: always() && steps.collect.outcome != 'success'
+        run: exit 1
