@@ -7,6 +7,11 @@ taken (in this order) from $DEMO_A_GITHUB_TOKEN, $GITHUB_TOKEN, $GH_TOKEN and
 are only attached to the request header; they are never printed or written
 anywhere.
 
+The job-log endpoint answers with a 302 redirect to a different download
+host. Redirects are followed, but a cross-host redirect must NOT carry the
+Authorization header (see StripCrossHostAuthorization): the download host is
+not GitHub and rejects a token-bearing request.
+
 Failure kinds are distinguished so callers can tell them apart and not infer
 a root cause from a status code alone. The first two are deliberately split:
 "no credential was sent" is NOT the same as "a credential was sent but the
@@ -24,6 +29,9 @@ server rejected it", and a 401/403 alone does not prove which happened.
                           rate-limit / abuse message
   not_found             — 404 (job/run/attempt no longer exists)
   gone                  — 410 (log expired and purged by GitHub)
+  log_target_refused    — the log request was redirected to a different
+                          download host and THAT host refused the request;
+                          this is not a GitHub API credential rejection
   network_error         — connection-level failure
   timeout               — request timed out
 
@@ -48,6 +56,7 @@ import os
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -72,6 +81,27 @@ def _token_from_env() -> tuple[str | None, str | None]:
         if value:
             return value, var
     return None, None
+
+
+class StripCrossHostAuthorization(urllib.request.HTTPRedirectHandler):
+    """Drop the Authorization header when a redirect crosses hostnames.
+
+    urllib's default redirect handler copies the original headers (including
+    Authorization) onto the redirected request, so a 302 from the job-log
+    endpoint to a different download host would leak the token there and get
+    the download rejected. Same-host redirects keep the header; cross-host
+    redirects must not carry it.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if (
+            redirected is not None
+            and urllib.parse.urlparse(req.full_url).hostname
+            != urllib.parse.urlparse(newurl).hostname
+        ):
+            redirected.remove_header("Authorization")
+        return redirected
 
 
 def _cache_paths(cache_dir: Path, repo: str, run_id: int, attempt: int, job_id: int) -> tuple[Path, Path]:
@@ -274,10 +304,11 @@ def fetch_job_log(
 
     attempts = retries + 1
     last_error: dict | None = None
+    opener = urllib.request.build_opener(StripCrossHostAuthorization())
     for round_no in range(1, attempts + 1):
         req = urllib.request.Request(url, headers=headers, method="GET")
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with opener.open(req, timeout=timeout) as resp:
                 body = resp.read()
                 status_code = resp.status
             if status_code not in (200, 302):
@@ -317,9 +348,21 @@ def fetch_job_log(
                 body_text = exc.read().decode("utf-8", errors="replace")
             except Exception:
                 body_text = None
-            status_kind, message = _classify_http_error(
-                exc.code, bool(token), body_text, getattr(exc, "headers", None)
-            )
+            error_url = getattr(exc, "url", None) or url
+            if urllib.parse.urlparse(error_url).hostname != urllib.parse.urlparse(url).hostname:
+                # The refusal came from a redirect download host, not from the
+                # GitHub API. This must NOT be classified as credential_rejected:
+                # the token itself may be perfectly valid.
+                status_kind = "log_target_refused"
+                message = (
+                    f"job-log request was redirected to a different download host "
+                    f"({error_url}) which returned HTTP {exc.code}; this is a "
+                    f"download-host refusal, NOT a GitHub token rejection"
+                )
+            else:
+                status_kind, message = _classify_http_error(
+                    exc.code, bool(token), body_text, getattr(exc, "headers", None)
+                )
             last_error = {
                 "status": status_kind,
                 "http_status": exc.code,

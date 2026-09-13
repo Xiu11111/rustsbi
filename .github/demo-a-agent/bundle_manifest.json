@@ -75,8 +75,8 @@
                   },
                   {
                       "relative_path":  "sources.py",
-                      "source_sha256":  "680efde8f1c2d30b5833377cad5db968da0d52d3dd042bed836e99eb31a80f87",
-                      "bundled_sha256":  "680efde8f1c2d30b5833377cad5db968da0d52d3dd042bed836e99eb31a80f87",
+                      "source_sha256":  "9c8d35d2c6f10c10d1c244a861a43fdeb54d04de80dd5c04ffc8ce58bcc88011",
+                      "bundled_sha256":  "9c8d35d2c6f10c10d1c244a861a43fdeb54d04de80dd5c04ffc8ce58bcc88011",
                       "match":  true
                   }
               ]
