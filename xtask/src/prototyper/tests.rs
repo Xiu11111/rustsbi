@@ -305,6 +305,67 @@ fn resolve_rejects_mode_features_and_invalid_config() {
 }
 
 #[test]
+fn resolve_rejects_unaligned_link_start_address() {
+    let root = env::temp_dir().join(format!(
+        "xtask-prototyper-test-{}-{}",
+        std::process::id(),
+        NEXT_TEST_DIR.fetch_add(1, Ordering::Relaxed)
+    ));
+    let config_dir = root.join("firmware/prototyper/config");
+    fs::create_dir_all(&config_dir).unwrap();
+    let config = VALID_CONFIG_TOML.replace(
+        "link_start_address = 0x80000000",
+        "link_start_address = 0x80000001",
+    );
+    fs::write(config_dir.join("default.toml"), config).unwrap();
+    let error = resolve_in(&base_build_args(), &root, &root).unwrap_err();
+    let message = format!("{error:#}");
+    assert!(message.contains("`link_start_address`"));
+    assert!(message.contains("must be 0x1000-aligned"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn resolve_rejects_unaligned_payload_address() {
+    let root = env::temp_dir().join(format!(
+        "xtask-prototyper-test-{}-{}",
+        std::process::id(),
+        NEXT_TEST_DIR.fetch_add(1, Ordering::Relaxed)
+    ));
+    let config_dir = root.join("firmware/prototyper/config");
+    fs::create_dir_all(&config_dir).unwrap();
+    let config = VALID_CONFIG_TOML.replace(
+        "payload_address = 0x80200000",
+        "payload_address = 0x80200001",
+    );
+    fs::write(config_dir.join("default.toml"), config).unwrap();
+    let error = resolve_in(&base_build_args(), &root, &root).unwrap_err();
+    let message = format!("{error:#}");
+    assert!(message.contains("`payload_address`"));
+    assert!(message.contains("must be 0x1000-aligned"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn resolve_rejects_unaligned_jump_address() {
+    let root = env::temp_dir().join(format!(
+        "xtask-prototyper-test-{}-{}",
+        std::process::id(),
+        NEXT_TEST_DIR.fetch_add(1, Ordering::Relaxed)
+    ));
+    let config_dir = root.join("firmware/prototyper/config");
+    fs::create_dir_all(&config_dir).unwrap();
+    let config =
+        VALID_CONFIG_TOML.replace("jump_address = 0x80200000", "jump_address = 0x80200001");
+    fs::write(config_dir.join("default.toml"), config).unwrap();
+    let error = resolve_in(&base_build_args(), &root, &root).unwrap_err();
+    let message = format!("{error:#}");
+    assert!(message.contains("`jump_address`"));
+    assert!(message.contains("must be 0x1000-aligned"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn resolve_derives_target_profile_and_rustflags() {
     let root = env::temp_dir().join(format!(
         "xtask-prototyper-test-{}-{}",
