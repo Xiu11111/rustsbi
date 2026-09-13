@@ -218,23 +218,41 @@ class GitHubClient:
     def get_run(self, run_id: int) -> dict:
         return self.get(f"/repos/{REPO}/actions/runs/{int(run_id)}")
 
-    def _paginate(self, first_path: str, max_pages: int) -> list:
+    def _paginate(self, first_path: str, max_pages: int, items_key: str | None = None) -> list:
+        """Paginate a per_page=100 GitHub list endpoint, passing an explicit
+        page number on every request.
+
+        items_key=None: the endpoint returns a top-level JSON array (issues,
+        issue comments); a non-list response just ends pagination.
+        items_key set: the endpoint returns an object envelope carrying the
+        array under that key (Actions jobs endpoint: {"total_count": N,
+        "jobs": [...]}). A response without that shape is malformed and is
+        rejected with ApiError (fail closed) instead of being mistaken for
+        a normal empty list.
+        """
         items: list = []
-        path = first_path
-        for _ in range(max_pages):
-            page = self.get(path)
-            if not isinstance(page, list):
+        for page_no in range(1, max_pages + 1):
+            separator = "&" if "?" in first_path else "?"
+            page = self.get(f"{first_path}{separator}page={page_no}")
+            if items_key is None:
+                if not isinstance(page, list):
+                    break
+                batch = page
+            else:
+                if not isinstance(page, dict) or not isinstance(page.get(items_key), list):
+                    raise ApiError(
+                        "malformed_response",
+                        f"github api response carries no {items_key!r} array (fail closed)",
+                    )
+                batch = page[items_key]
+            items.extend(batch)
+            if len(batch) < 100:
                 break
-            items.extend(page)
-            if len(page) < 100:
-                break
-            separator = "&" if "?" in path else "?"
-            path = f"{path}{separator}page={len(items) // 100 + 1}"
         return items
 
     def list_jobs(self, run_id: int, run_attempt: int, max_pages: int = 10) -> list:
         path = f"/repos/{REPO}/actions/runs/{int(run_id)}/attempts/{int(run_attempt)}/jobs?per_page=100"
-        jobs = self._paginate(path, max_pages)
+        jobs = self._paginate(path, max_pages, items_key="jobs")
         return [j for j in jobs if isinstance(j, dict)]
 
     def list_issues(self, state: str = "all", max_pages: int = 20) -> list:
